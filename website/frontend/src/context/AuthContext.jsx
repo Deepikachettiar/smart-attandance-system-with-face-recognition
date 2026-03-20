@@ -3,16 +3,26 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
+// Base URL — use proxy in dev, or set REACT_APP_API_URL
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || '';
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser]     = useState(null);
+  const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    const saved  = localStorage.getItem('user');
+    const saved = localStorage.getItem('user');
     if (token && saved) {
-      setUser(JSON.parse(saved));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.role === 'teacher') {
+          setUser(parsed);
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        } else {
+          localStorage.clear();
+        }
+      } catch { localStorage.clear(); }
     }
     setLoading(false);
   }, []);

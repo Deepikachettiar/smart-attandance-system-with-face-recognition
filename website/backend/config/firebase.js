@@ -8,41 +8,39 @@ const initFirebase = () => {
     return db;
   }
 
-  // Initialize with service account from env vars
-  const serviceAccount = {
-    type: 'service_account',
-    project_id: process.env.FIREBASE_PROJECT_ID,
-    client_email: process.env.FIREBASE_CLIENT_EMAIL,
-    private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  };
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY
+    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    : undefined;
+
+  if (!privateKey || !process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL) {
+    throw new Error('Missing Firebase env vars. Check .env file.');
+  }
 
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`,
+    credential: admin.credential.cert({
+      type: 'service_account',
+      project_id: process.env.FIREBASE_PROJECT_ID,
+      client_email: process.env.FIREBASE_CLIENT_EMAIL,
+      private_key: privateKey,
+    }),
   });
 
   db = admin.firestore();
-
-  // Firestore settings
   db.settings({ ignoreUndefinedProperties: true });
-
-  console.log('✅ Firebase initialized:', process.env.FIREBASE_PROJECT_ID);
+  console.log('✅ Firebase connected ->', process.env.FIREBASE_PROJECT_ID);
   return db;
 };
 
-// Helper: convert Firestore timestamp to ISO string
-const toDate = (ts) => {
-  if (!ts) return null;
-  if (ts.toDate) return ts.toDate().toISOString();
-  return ts;
+const getDb = () => {
+  if (!db) throw new Error('Firebase not initialized');
+  return db;
 };
 
-// Firestore collections helper
 const collections = {
-  USERS: 'users',
-  SUBJECTS: 'subjects',
+  USERS:       'users',
+  SUBJECTS:    'subjects',
   ENROLLMENTS: 'enrollments',
-  ATTENDANCE: 'attendance',
+  ATTENDANCE:  'attendance',
 };
 
-module.exports = { initFirebase, getDb: () => db, toDate, collections, admin };
+module.exports = { initFirebase, getDb, collections, admin };

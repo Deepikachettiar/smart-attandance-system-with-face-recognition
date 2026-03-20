@@ -6,8 +6,7 @@ const router = express.Router();
 
 const THRESHOLD = parseInt(process.env.ATTENDANCE_THRESHOLD || '75');
 
-// ── GET /api/attendance/student/:studentId
-// Returns records filtered by subject, from, to
+// GET /api/attendance/student/:studentId
 router.get('/student/:studentId', authenticate, async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -16,22 +15,24 @@ router.get('/student/:studentId', authenticate, async (req, res) => {
 
     const db = getDb();
     let query = db.collection(collections.ATTENDANCE).where('studentId', '==', studentId);
+    if (req.query.subject_id)
+      query = query.where('subjectId', '==', req.query.subject_id);
 
-    if (req.query.subject_id) query = query.where('subjectId', '==', req.query.subject_id);
-    if (req.query.from)       query = query.where('date', '>=', req.query.from);
-    if (req.query.to)         query = query.where('date', '<=', req.query.to);
-
-    query = query.orderBy('date', 'desc');
     const snap = await query.get();
-    const records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    let records = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (req.query.from) records = records.filter(r => r.date >= req.query.from);
+    if (req.query.to)   records = records.filter(r => r.date <= req.query.to);
+    records.sort((a, b) => b.date.localeCompare(a.date));
+
     res.json(records);
   } catch (err) {
-    console.error('[GET STUDENT ATT]', err);
+    console.error('[GET STUDENT ATT]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── GET /api/attendance/summary/:studentId
+// GET /api/attendance/summary/:studentId
 router.get('/summary/:studentId', authenticate, async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -42,20 +43,25 @@ router.get('/summary/:studentId', authenticate, async (req, res) => {
     const snap = await db.collection(collections.ATTENDANCE).where('studentId', '==', studentId).get();
     const records = snap.docs.map(d => d.data());
 
-    // Group by subject
     const bySubject = {};
     for (const r of records) {
       if (!bySubject[r.subjectId]) {
-        bySubject[r.subjectId] = { subject_id: r.subjectId, subject_name: r.subjectName, subject_code: r.subjectCode, total: 0, present: 0, absent: 0, late: 0 };
+        bySubject[r.subjectId] = {
+          subject_id: r.subjectId,
+          subject_name: r.subjectName,
+          subject_code: r.subjectCode,
+          total: 0, present: 0, absent: 0, late: 0,
+        };
       }
       bySubject[r.subjectId].total++;
-      if (r.status === 'Present') bySubject[r.subjectId].present++;
-      else if (r.status === 'Absent') bySubject[r.subjectId].absent++;
-      else if (r.status === 'Late') bySubject[r.subjectId].late++;
+      if (r.status === 'Present')      bySubject[r.subjectId].present++;
+      else if (r.status === 'Absent')  bySubject[r.subjectId].absent++;
+      else if (r.status === 'Late')    bySubject[r.subjectId].late++;
     }
+
     const summary = Object.values(bySubject).map(s => ({
       ...s,
-      percentage: s.total ? Math.round(100 * s.present / s.total * 10) / 10 : 0,
+      percentage: s.total ? Math.round(1000 * s.present / s.total) / 10 : 0,
     }));
     res.json(summary);
   } catch (err) {
@@ -63,7 +69,7 @@ router.get('/summary/:studentId', authenticate, async (req, res) => {
   }
 });
 
-// ── GET /api/attendance/teacher/subjects
+// GET /api/attendance/teacher/subjects
 router.get('/teacher/subjects', authenticate, requireTeacher, async (req, res) => {
   try {
     const db = getDb();
@@ -74,7 +80,7 @@ router.get('/teacher/subjects', authenticate, requireTeacher, async (req, res) =
   }
 });
 
-// ── GET /api/attendance/class/:subjectId?date=YYYY-MM-DD
+// GET /api/attendance/class/:subjectId?date=YYYY-MM-DD
 router.get('/class/:subjectId', authenticate, requireTeacher, async (req, res) => {
   try {
     const { subjectId } = req.params;
@@ -86,17 +92,17 @@ router.get('/class/:subjectId', authenticate, requireTeacher, async (req, res) =
       return res.status(403).json({ error: 'Not your subject' });
     const subject = { id: subDoc.id, ...subDoc.data() };
 
-    // Get enrolled students
-    const enrollSnap = await db.collection(collections.ENROLLMENTS).where('subjectId', '==', subjectId).get();
+    const enrollSnap = await db.collection(collections.ENROLLMENTS)
+      .where('subjectId', '==', subjectId).get();
     const studentIds = enrollSnap.docs.map(d => d.data().studentId);
 
-    // Get today's attendance records
     const attSnap = await db.collection(collections.ATTENDANCE)
-      .where('subjectId', '==', subjectId).where('date', '==', date).get();
+      .where('subjectId', '==', subjectId)
+      .where('date', '==', date)
+      .get();
     const attMap = {};
     attSnap.docs.forEach(d => { attMap[d.data().studentId] = { id: d.id, ...d.data() }; });
 
-    // Get student details
     const students = [];
     for (const sid of studentIds) {
       const uDoc = await db.collection(collections.USERS).doc(sid).get();
@@ -104,7 +110,9 @@ router.get('/class/:subjectId', authenticate, requireTeacher, async (req, res) =
         const u = uDoc.data();
         const att = attMap[sid];
         students.push({
-          id: sid, name: u.name, studentId: u.studentId,
+          id: sid,
+          name: u.name,
+          studentId: u.studentId,
           status: att?.status || 'Not Marked',
           method: att?.method || null,
           attendance_id: att?.id || null,
@@ -114,12 +122,12 @@ router.get('/class/:subjectId', authenticate, requireTeacher, async (req, res) =
     students.sort((a, b) => a.name.localeCompare(b.name));
     res.json({ subject, date, students });
   } catch (err) {
-    console.error('[CLASS ATT]', err);
+    console.error('[CLASS ATT]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/attendance/mark  (single)
+// POST /api/attendance/mark
 router.post('/mark', authenticate, requireTeacher, async (req, res) => {
   try {
     const { student_id, subject_id, date, status, method } = req.body;
@@ -145,17 +153,15 @@ router.post('/mark', authenticate, requireTeacher, async (req, res) => {
       markedBy: req.user.id, updatedAt: new Date(),
     }, { merge: true });
 
-    // Check for low attendance and send alert
-    await checkAndAlertLowAttendance(db, student_id, subject_id, sub.name, stu.email, stu.name, req.user.name);
-
+    checkAndAlert(db, student_id, subject_id, sub.name, stu.email, stu.name, req.user.name);
     res.json({ success: true });
   } catch (err) {
-    console.error('[MARK]', err);
+    console.error('[MARK]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/attendance/bulk-mark
+// POST /api/attendance/bulk-mark
 router.post('/bulk-mark', authenticate, requireTeacher, async (req, res) => {
   try {
     const { subject_id, date, records } = req.body;
@@ -168,7 +174,6 @@ router.post('/bulk-mark', authenticate, requireTeacher, async (req, res) => {
       return res.status(403).json({ error: 'Not your subject' });
     const sub = subDoc.data();
 
-    // Firestore batch (max 500)
     const batch = db.batch();
     for (const r of records) {
       const docId = `${r.student_id}_${subject_id}_${date}`;
@@ -183,20 +188,14 @@ router.post('/bulk-mark', authenticate, requireTeacher, async (req, res) => {
     }
     await batch.commit();
 
-    // Alert for low attendance in background
-    for (const r of records) {
-      checkAndAlertLowAttendance(db, r.student_id, subject_id, sub.name, r.email, r.name, req.user.name).catch(() => {});
-    }
-
     res.json({ success: true, count: records.length });
   } catch (err) {
-    console.error('[BULK MARK]', err);
+    console.error('[BULK MARK]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/attendance/import-csv
-// Expects { records: [{Name, Date, Time, Status}], subject_id, date }
+// POST /api/attendance/import-csv
 router.post('/import-csv', authenticate, requireTeacher, async (req, res) => {
   try {
     const { records, subject_id, date } = req.body;
@@ -209,7 +208,6 @@ router.post('/import-csv', authenticate, requireTeacher, async (req, res) => {
       return res.status(403).json({ error: 'Not your subject' });
     const sub = subDoc.data();
 
-    // Get all students for name matching
     const stuSnap = await db.collection(collections.USERS).where('role', '==', 'student').get();
     const allStudents = stuSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -223,7 +221,6 @@ router.post('/import-csv', authenticate, requireTeacher, async (req, res) => {
       const time = r.Time?.trim() || r.time?.trim() || '09:00:00';
       if (!name) continue;
 
-      // Match by exact or partial name
       const student = allStudents.find(s =>
         s.name.toLowerCase() === name.toLowerCase() ||
         s.name.toLowerCase().includes(name.toLowerCase())
@@ -242,15 +239,14 @@ router.post('/import-csv', authenticate, requireTeacher, async (req, res) => {
       imported++;
     }
     await batch.commit();
-
     res.json({ success: true, imported, notFound });
   } catch (err) {
-    console.error('[IMPORT CSV]', err);
+    console.error('[IMPORT CSV]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── GET /api/attendance/export/:subjectId
+// GET /api/attendance/export/:subjectId
 router.get('/export/:subjectId', authenticate, requireTeacher, async (req, res) => {
   try {
     const { subjectId } = req.params;
@@ -260,16 +256,24 @@ router.get('/export/:subjectId', authenticate, requireTeacher, async (req, res) 
     if (!subDoc.exists || subDoc.data().teacherId !== req.user.id)
       return res.status(403).json({ error: 'Not your subject' });
 
-    let query = db.collection(collections.ATTENDANCE).where('subjectId', '==', subjectId);
-    if (req.query.from) query = query.where('date', '>=', req.query.from);
-    if (req.query.to)   query = query.where('date', '<=', req.query.to);
-    query = query.orderBy('date', 'desc');
+    const snap = await db.collection(collections.ATTENDANCE)
+      .where('subjectId', '==', subjectId).get();
 
-    const snap = await query.get();
-    const rows = snap.docs.map(d => {
+    let rows = snap.docs.map(d => {
       const r = d.data();
-      return { Name: r.studentName, Date: r.date, Time: r.time?.split('T')[1]?.slice(0,8) || '', Status: r.status, Method: r.method, 'Roll No': r.studentRollNo };
+      return {
+        Name: r.studentName,
+        Date: r.date,
+        Time: r.time?.split('T')[1]?.slice(0, 8) || '',
+        Status: r.status,
+        Method: r.method,
+        'Roll No': r.studentRollNo,
+      };
     });
+
+    if (req.query.from) rows = rows.filter(r => r.Date >= req.query.from);
+    if (req.query.to)   rows = rows.filter(r => r.Date <= req.query.to);
+    rows.sort((a, b) => b.Date.localeCompare(a.Date));
 
     res.json({ subject: { id: subjectId, ...subDoc.data() }, rows });
   } catch (err) {
@@ -277,7 +281,7 @@ router.get('/export/:subjectId', authenticate, requireTeacher, async (req, res) 
   }
 });
 
-// ── GET /api/attendance/analytics/:subjectId
+// GET /api/attendance/analytics/:subjectId
 router.get('/analytics/:subjectId', authenticate, requireTeacher, async (req, res) => {
   try {
     const { subjectId } = req.params;
@@ -287,31 +291,38 @@ router.get('/analytics/:subjectId', authenticate, requireTeacher, async (req, re
     if (!subDoc.exists || subDoc.data().teacherId !== req.user.id)
       return res.status(403).json({ error: 'Not your subject' });
 
-    const snap = await db.collection(collections.ATTENDANCE).where('subjectId', '==', subjectId).get();
+    const snap = await db.collection(collections.ATTENDANCE)
+      .where('subjectId', '==', subjectId).get();
     const records = snap.docs.map(d => d.data());
 
-    // Per-student stats
     const byStudent = {};
     const byDate = {};
+
     for (const r of records) {
       if (!byStudent[r.studentId]) {
-        byStudent[r.studentId] = { id: r.studentId, name: r.studentName, roll_no: r.studentRollNo, total: 0, present: 0, absent: 0, late: 0 };
+        byStudent[r.studentId] = {
+          id: r.studentId, name: r.studentName,
+          roll_no: r.studentRollNo,
+          total: 0, present: 0, absent: 0, late: 0,
+        };
       }
       byStudent[r.studentId].total++;
-      if (r.status === 'Present') byStudent[r.studentId].present++;
+      if (r.status === 'Present')     byStudent[r.studentId].present++;
       else if (r.status === 'Absent') byStudent[r.studentId].absent++;
-      else if (r.status === 'Late') byStudent[r.studentId].late++;
+      else if (r.status === 'Late')   byStudent[r.studentId].late++;
 
-      if (!byDate[r.date]) byDate[r.date] = { date: r.date, present: 0, absent: 0, late: 0, total: 0 };
+      if (!byDate[r.date]) {
+        byDate[r.date] = { date: r.date, present: 0, absent: 0, late: 0, total: 0 };
+      }
       byDate[r.date].total++;
-      if (r.status === 'Present') byDate[r.date].present++;
+      if (r.status === 'Present')     byDate[r.date].present++;
       else if (r.status === 'Absent') byDate[r.date].absent++;
-      else if (r.status === 'Late') byDate[r.date].late++;
+      else if (r.status === 'Late')   byDate[r.date].late++;
     }
 
     const stats = Object.values(byStudent).map(s => ({
       ...s,
-      percentage: s.total ? Math.round(100 * s.present / s.total * 10) / 10 : 0,
+      percentage: s.total ? Math.round(1000 * s.present / s.total) / 10 : 0,
     })).sort((a, b) => a.name.localeCompare(b.name));
 
     const daily = Object.values(byDate)
@@ -324,17 +335,18 @@ router.get('/analytics/:subjectId', authenticate, requireTeacher, async (req, re
   }
 });
 
-// ── Helper: check attendance and send email alert
-async function checkAndAlertLowAttendance(db, studentId, subjectId, subjectName, studentEmail, studentName, teacherName) {
+// Helper: check and send low attendance email
+async function checkAndAlert(db, studentId, subjectId, subjectName, studentEmail, studentName, teacherName) {
   if (!studentEmail) return;
   try {
     const snap = await db.collection(collections.ATTENDANCE)
-      .where('studentId', '==', studentId).where('subjectId', '==', subjectId).get();
+      .where('studentId', '==', studentId)
+      .where('subjectId', '==', subjectId)
+      .get();
     const records = snap.docs.map(d => d.data());
-    const total = records.length;
-    if (total < 5) return; // not enough data
+    if (records.length < 5) return;
     const present = records.filter(r => r.status === 'Present').length;
-    const pct = Math.round(100 * present / total);
+    const pct = Math.round(100 * present / records.length);
     if (pct < THRESHOLD) {
       await sendLowAttendanceAlert({ studentEmail, studentName, subjectName, percentage: pct, teacherName });
     }
