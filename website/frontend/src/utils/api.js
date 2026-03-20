@@ -16,7 +16,6 @@ export const api = {
   bulkMark:             (data)          => axios.post('/api/attendance/bulk-mark', data),
   importCSV:            (data)          => axios.post('/api/attendance/import-csv', data),
   exportAttendance:     (subId, params) => axios.get(`/api/attendance/export/${subId}`, { params }),
-  getAnalytics:         (subId)         => axios.get(`/api/attendance/analytics/${subId}`),
   getAllStudents:        ()              => axios.get('/api/students'),
 };
 
