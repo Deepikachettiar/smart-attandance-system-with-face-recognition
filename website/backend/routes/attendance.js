@@ -69,16 +69,18 @@ router.get('/summary/:studentId', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/attendance/teacher/subjects
-router.get('/teacher/subjects', authenticate, requireTeacher, async (req, res) => {
+
+// GET /api/attendance/teacher/all-subjects  — returns ALL subjects (for new Firebase Auth users)
+router.get('/teacher/all-subjects', authenticate, requireTeacher, async (req, res) => {
   try {
     const db = getDb();
-    const snap = await db.collection(collections.SUBJECTS).where('teacherId', '==', req.user.id).get();
+    const snap = await db.collection(collections.SUBJECTS).get();
     res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // GET /api/attendance/class/:subjectId?date=YYYY-MM-DD
 router.get('/class/:subjectId', authenticate, requireTeacher, async (req, res) => {

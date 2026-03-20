@@ -10,8 +10,7 @@ export const api = {
   getStudentSubjects:   (id)         => axios.get(`/api/students/${id}/subjects`),
 
   // Teacher
-  getTeacherSubjects:   ()              => axios.get('/api/attendance/teacher/subjects'),
-  getClassAttendance:   (subId, date)   => axios.get(`/api/attendance/class/${subId}`, { params: { date } }),
+  getTeacherSubjects: () => axios.get('/api/attendance/teacher/all-subjects'),  getClassAttendance:   (subId, date)   => axios.get(`/api/attendance/class/${subId}`, { params: { date } }),
   markAttendance:       (data)          => axios.post('/api/attendance/mark', data),
   bulkMark:             (data)          => axios.post('/api/attendance/bulk-mark', data),
   importCSV:            (data)          => axios.post('/api/attendance/import-csv', data),

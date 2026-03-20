@@ -19,7 +19,8 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const token = await firebaseUser.getIdToken();
+        // Get fresh token and set on axios BEFORE marking loading=false
+        const token = await firebaseUser.getIdToken(true);
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         setUser({
           id:    firebaseUser.uid,
@@ -36,29 +37,45 @@ export const AuthProvider = ({ children }) => {
     return unsub;
   }, []);
 
+  // Refresh token every 50 minutes (Firebase tokens expire at 60 min)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const firebaseUser = auth.currentUser;
+      if (firebaseUser) {
+        const token = await firebaseUser.getIdToken(true);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
+    }, 50 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const login = async (email, password) => {
     const cred = await signInWithEmailAndPassword(auth, email, password);
-    const token = await cred.user.getIdToken();
+    const token = await cred.user.getIdToken(true);
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    return {
+    const u = {
       id:    cred.user.uid,
       email: cred.user.email,
       name:  cred.user.displayName || cred.user.email,
       role:  'teacher',
     };
+    setUser(u);
+    return u;
   };
 
   const signup = async (name, email, password) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
-    const token = await cred.user.getIdToken();
+    const token = await cred.user.getIdToken(true);
     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    return {
+    const u = {
       id:    cred.user.uid,
       email: cred.user.email,
       name,
       role:  'teacher',
     };
+    setUser(u);
+    return u;
   };
 
   const logout = async () => {
