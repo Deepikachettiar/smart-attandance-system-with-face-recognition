@@ -10,20 +10,27 @@ from datetime import datetime
 SERIAL_PORT = 'COM7'   # change if needed
 BAUD_RATE = 115200
 CAMERA_INDEX = 1       # 1 = external webcam, 0 = laptop cam
-DATASET_PATH = 'dataset'
-ATTENDANCE_FILE = 'Attendance.csv'
 
 # Sensor conditions
 IR_TRIGGER_VALUE = 0          # change to 1 if your IR works opposite
 MIN_DISTANCE = 20             # cm
 MAX_DISTANCE = 80             # cm
-LDR_LIGHT_THRESHOLD = 2000    # dark = high, light = low in your setup
+LDR_LIGHT_THRESHOLD = 2000    # in your setup: dark = higher, light = lower
+
+# -------- PATHS --------
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATASET_PATH = os.path.join(BASE_DIR, 'dataset')
+ATTENDANCE_DIR = os.path.join(BASE_DIR, 'attendance')
+os.makedirs(ATTENDANCE_DIR, exist_ok=True)
+
+today_str = datetime.now().strftime('%d-%m-%Y')
+ATTENDANCE_FILE = os.path.join(ATTENDANCE_DIR, f'attendance_{today_str}.csv')
 
 # -------- SERIAL SETUP --------
 ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
 print("Connected to ESP32...")
 time.sleep(2)               # wait for ESP32 reboot
-ser.reset_input_buffer()    # clear boot messages
+ser.reset_input_buffer()    # clear ESP32 boot messages
 
 # -------- LOAD KNOWN FACES --------
 images = []
@@ -79,7 +86,7 @@ print("Encoding Complete")
 def markAttendance(name):
     if not os.path.exists(ATTENDANCE_FILE):
         with open(ATTENDANCE_FILE, 'w') as f:
-            f.write("Name,Time\n")
+            f.write("Name,Time,Date\n")
 
     with open(ATTENDANCE_FILE, 'r+') as f:
         data = f.readlines()
@@ -88,7 +95,8 @@ def markAttendance(name):
         if name not in nameList:
             now = datetime.now()
             time_now = now.strftime('%H:%M:%S')
-            f.write(f"{name},{time_now}\n")
+            date=now.strftime('%d-%m-%Y')
+            f.write(f"{name},{time_now},{date}\n")
             print(f"Attendance marked for {name}")
             return True
 
@@ -112,6 +120,7 @@ while True:
         if not data:
             continue
 
+        # ignore ESP32 boot garbage, only accept real sensor line
         if not data.startswith("IR:"):
             continue
 
@@ -129,7 +138,7 @@ while True:
             success, img = cap.read()
             if not success:
                 print("Could not read from camera")
-                ser.write(b"ERROR\n")
+                ser.write(b"STOP\n")
                 continue
 
             imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
@@ -140,7 +149,7 @@ while True:
 
             if len(encodesCurFrame) == 0:
                 print("No face detected")
-                ser.write(b"ERROR\n")
+                ser.write(b"STOP\n")
                 cv2.imshow("Attendance System", img)
             else:
                 recognized_anyone = False
@@ -166,16 +175,31 @@ while True:
 
                         cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
                         cv2.rectangle(img, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
-                        cv2.putText(img, name, (left + 6, bottom - 6),
-                                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+                        cv2.putText(
+                            img,
+                            name,
+                            (left + 6, bottom - 6),
+                            cv2.FONT_HERSHEY_COMPLEX,
+                            1,
+                            (255, 255, 255),
+                            2
+                        )
 
                         markAttendance(name)
                         print("Recognized:", name)
+
                     else:
                         cv2.rectangle(img, (left, top), (right, bottom), (0, 0, 255), 2)
                         cv2.rectangle(img, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
-                        cv2.putText(img, "UNKNOWN", (left + 6, bottom - 6),
-                                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+                        cv2.putText(
+                            img,
+                            "UNKNOWN",
+                            (left + 6, bottom - 6),
+                            cv2.FONT_HERSHEY_COMPLEX,
+                            1,
+                            (255, 255, 255),
+                            2
+                        )
 
                 if recognized_anyone:
                     ser.write(b"SUCCESS\n")
@@ -187,8 +211,7 @@ while True:
 
         else:
             print(f"Conditions NOT met -> IR={ir}, DIST={dist:.2f}, LDR={ldr}")
-            # leave this commented to avoid continuous buzzer beeping all the time
-            # ser.write(b"ERROR\n")
+            ser.write(b"STOP\n")
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
