@@ -1,139 +1,205 @@
+import serial
 import cv2
 import face_recognition
 import os
 import numpy as np
-import pandas as pd
+import time
 from datetime import datetime
 
-# Base folders
-base_dir = os.path.dirname(os.path.dirname(__file__))
-dataset_dir = os.path.join(base_dir, "dataset")
-attendance_dir = os.path.join(base_dir, "attendance")
+# -------- SETTINGS --------
+SERIAL_PORT = 'COM7'   # change if needed
+BAUD_RATE = 115200
+CAMERA_INDEX = 1       # 1 = external webcam, 0 = laptop cam
+DATASET_PATH = 'dataset'
+ATTENDANCE_FILE = 'Attendance.csv'
 
-os.makedirs(attendance_dir, exist_ok=True)
+# Sensor conditions
+IR_TRIGGER_VALUE = 0          # change to 1 if your IR works opposite
+MIN_DISTANCE = 20             # cm
+MAX_DISTANCE = 80             # cm
+LDR_LIGHT_THRESHOLD = 2000    # dark = high, light = low in your setup
 
-# Create today's attendance file
-today_date = datetime.now().strftime("%d-%m-%Y")
-attendance_file = os.path.join(attendance_dir, f"attendance_{today_date}.csv")
+# -------- SERIAL SETUP --------
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+print("Connected to ESP32...")
+time.sleep(2)               # wait for ESP32 reboot
+ser.reset_input_buffer()    # clear boot messages
 
-if not os.path.exists(attendance_file):
-    df = pd.DataFrame(columns=["Name", "Date", "Time", "Status"])
-    df.to_csv(attendance_file, index=False)
+# -------- LOAD KNOWN FACES --------
+images = []
+classNames = []
 
-known_face_encodings = []
-known_face_names = []
+if not os.path.exists(DATASET_PATH):
+    raise FileNotFoundError(f"Dataset folder not found: {DATASET_PATH}")
 
-print("Loading dataset...")
+for person_name in os.listdir(DATASET_PATH):
+    person_folder = os.path.join(DATASET_PATH, person_name)
 
-# Load all known face images and create encodings
-for person_name in os.listdir(dataset_dir):
-    person_path = os.path.join(dataset_dir, person_name)
+    if os.path.isdir(person_folder):
+        for img_name in os.listdir(person_folder):
+            img_path = os.path.join(person_folder, img_name)
 
-    if os.path.isdir(person_path):
-        for image_name in os.listdir(person_path):
-            image_path = os.path.join(person_path, image_name)
+            img = cv2.imread(img_path)
+            if img is not None:
+                images.append(img)
+                classNames.append(person_name)
+            else:
+                print(f"Could not read image: {img_path}")
 
-            try:
-                image = face_recognition.load_image_file(image_path)
-                encodings = face_recognition.face_encodings(image)
+if len(images) == 0:
+    raise ValueError("No valid images found in dataset folder.")
 
-                if len(encodings) > 0:
-                    known_face_encodings.append(encodings[0])
-                    known_face_names.append(person_name)
-                    print(f"Loaded: {person_name} - {image_name}")
-                else:
-                    print(f"No face found in {image_path}")
+def findEncodings(images, names):
+    encodeList = []
+    validNames = []
 
-            except Exception as e:
-                print(f"Error loading {image_path}: {e}")
+    for i, img in enumerate(images):
+        try:
+            rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            encodings = face_recognition.face_encodings(rgb_img)
 
-print("Dataset loaded successfully.")
+            if len(encodings) > 0:
+                encodeList.append(encodings[0])
+                validNames.append(names[i])
+            else:
+                print(f"No face found in image for {names[i]}")
+        except Exception as e:
+            print(f"Encoding error for {names[i]}: {e}")
 
-# Read names already marked today
-attendance_df = pd.read_csv(attendance_file)
-marked_names = set(attendance_df["Name"].tolist())
+    return encodeList, validNames
 
-# Try external webcam first
-cap = cv2.VideoCapture(1)
+encodeListKnown, classNames = findEncodings(images, classNames)
 
-# If external webcam doesn't open, fallback to laptop camera
-if not cap.isOpened():
-    print("External webcam not found. Switching to default camera...")
-    cap = cv2.VideoCapture(0)
+if len(encodeListKnown) == 0:
+    raise ValueError("No valid face encodings could be created from dataset images.")
 
-print("Starting attendance system...")
-print("Press 'q' to quit")
+print("Encoding Complete")
 
-while True:
-    ret, frame = cap.read()
+# -------- ATTENDANCE --------
+def markAttendance(name):
+    if not os.path.exists(ATTENDANCE_FILE):
+        with open(ATTENDANCE_FILE, 'w') as f:
+            f.write("Name,Time\n")
 
-    if not ret:
-        print("Camera not working")
-        break
+    with open(ATTENDANCE_FILE, 'r+') as f:
+        data = f.readlines()
+        nameList = [line.split(',')[0].strip() for line in data[1:] if ',' in line]
 
-    # Resize frame for faster processing
-    small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-    rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-
-    # Detect face locations and encodings
-    face_locations = face_recognition.face_locations(rgb_small_frame)
-    face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-
-    for face_encoding, face_location in zip(face_encodings, face_locations):
-        matches = face_recognition.compare_faces(
-            known_face_encodings, face_encoding, tolerance=0.5
-        )
-        face_distances = face_recognition.face_distance(
-            known_face_encodings, face_encoding
-        )
-
-        name = "Unknown"
-
-        if len(face_distances) > 0:
-            best_match_index = np.argmin(face_distances)
-            if matches[best_match_index]:
-                name = known_face_names[best_match_index]
-
-        # Scale face coordinates back to original frame size
-        top, right, bottom, left = face_location
-        top *= 4
-        right *= 4
-        bottom *= 4
-        left *= 4
-
-        # Draw rectangle around face
-        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-
-        # Draw name label
-        cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
-        cv2.putText(
-            frame,
-            name,
-            (left + 6, bottom - 8),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (255, 255, 255),
-            2
-        )
-
-        # Mark attendance only once per day
-        if name != "Unknown" and name not in marked_names:
+        if name not in nameList:
             now = datetime.now()
-            new_entry = pd.DataFrame([{
-                "Name": name,
-                "Date": now.strftime("%d-%m-%Y"),
-                "Time": now.strftime("%H:%M:%S"),
-                "Status": "Present"
-            }])
-
-            new_entry.to_csv(attendance_file, mode="a", header=False, index=False)
-            marked_names.add(name)
+            time_now = now.strftime('%H:%M:%S')
+            f.write(f"{name},{time_now}\n")
             print(f"Attendance marked for {name}")
+            return True
 
-    cv2.imshow("Automatic Attendance System", frame)
+    print(f"{name} already marked present")
+    return False
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+# -------- CAMERA --------
+cap = cv2.VideoCapture(CAMERA_INDEX)
+
+if not cap.isOpened():
+    raise RuntimeError(f"Could not open camera at index {CAMERA_INDEX}")
+
+print("System running...")
+print("Press Q in camera window to quit")
+
+# -------- MAIN LOOP --------
+while True:
+    try:
+        data = ser.readline().decode(errors='ignore').strip()
+
+        if not data:
+            continue
+
+        if not data.startswith("IR:"):
+            continue
+
+        print("Sensor Data:", data)
+
+        parts = data.split(',')
+        ir = int(parts[0].split(':')[1])
+        dist = float(parts[1].split(':')[1])
+        ldr = int(parts[2].split(':')[1])
+
+        # -------- CONDITIONS --------
+        if ir == IR_TRIGGER_VALUE and MIN_DISTANCE < dist < MAX_DISTANCE and ldr < LDR_LIGHT_THRESHOLD:
+            print("Conditions OK -> Running face recognition")
+
+            success, img = cap.read()
+            if not success:
+                print("Could not read from camera")
+                ser.write(b"ERROR\n")
+                continue
+
+            imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+            imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
+
+            facesCurFrame = face_recognition.face_locations(imgS)
+            encodesCurFrame = face_recognition.face_encodings(imgS, facesCurFrame)
+
+            if len(encodesCurFrame) == 0:
+                print("No face detected")
+                ser.write(b"ERROR\n")
+                cv2.imshow("Attendance System", img)
+            else:
+                recognized_anyone = False
+
+                for encodeFace, faceLoc in zip(encodesCurFrame, facesCurFrame):
+                    matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
+                    faceDis = face_recognition.face_distance(encodeListKnown, encodeFace)
+
+                    if len(faceDis) == 0:
+                        continue
+
+                    matchIndex = np.argmin(faceDis)
+
+                    top, right, bottom, left = faceLoc
+                    top *= 4
+                    right *= 4
+                    bottom *= 4
+                    left *= 4
+
+                    if matches[matchIndex]:
+                        name = classNames[matchIndex].upper()
+                        recognized_anyone = True
+
+                        cv2.rectangle(img, (left, top), (right, bottom), (0, 255, 0), 2)
+                        cv2.rectangle(img, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
+                        cv2.putText(img, name, (left + 6, bottom - 6),
+                                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+
+                        markAttendance(name)
+                        print("Recognized:", name)
+                    else:
+                        cv2.rectangle(img, (left, top), (right, bottom), (0, 0, 255), 2)
+                        cv2.rectangle(img, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
+                        cv2.putText(img, "UNKNOWN", (left + 6, bottom - 6),
+                                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 2)
+
+                if recognized_anyone:
+                    ser.write(b"SUCCESS\n")
+                else:
+                    print("Unknown person")
+                    ser.write(b"ERROR\n")
+
+                cv2.imshow("Attendance System", img)
+
+        else:
+            print(f"Conditions NOT met -> IR={ir}, DIST={dist:.2f}, LDR={ldr}")
+            # leave this commented to avoid continuous buzzer beeping all the time
+            # ser.write(b"ERROR\n")
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    except KeyboardInterrupt:
+        print("Stopped by user")
         break
+    except Exception as e:
+        print("Error:", e)
 
 cap.release()
 cv2.destroyAllWindows()
+ser.close()
+print("Program closed")
