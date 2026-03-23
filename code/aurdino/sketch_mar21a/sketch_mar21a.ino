@@ -29,35 +29,48 @@ float getDistance() {
 
   duration = pulseIn(ECHO_PIN, HIGH, 20000);
 
-  if (duration == 0) {
-    return 0.0;
-  }
+  if (duration == 0) return 0.0;
 
-  distanceCm = duration * 0.034 / 2.0;
-  return distanceCm;
-}
-
-void stopBuzzer() {
-  digitalWrite(BUZZER_PIN, LOW);
+  return duration * 0.034 / 2.0;
 }
 
 void successBeep() {
-  stopBuzzer();
   digitalWrite(BUZZER_PIN, HIGH);
-  delay(150);
+  delay(1000);   // 1 second beep
   digitalWrite(BUZZER_PIN, LOW);
 }
 
 void errorBeep() {
   for (int i = 0; i < 3; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
-    delay(120);
+    delay(180);
     digitalWrite(BUZZER_PIN, LOW);
-    delay(120);
+    delay(200);
   }
 }
 
+void stopBuzzer() {
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
 void loop() {
+  // FIRST: react to Python commands immediately
+  if (Serial.available()) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+
+    if (command == "SUCCESS") {
+      successBeep();
+    }
+    else if (command == "ERROR") {
+      errorBeep();
+    }
+    else if (command == "STOP") {
+      stopBuzzer();
+    }
+  }
+
+  // THEN: read sensors and send to Python
   int irValue = digitalRead(IR_PIN);
   float distance = getDistance();
   int ldrValue = analogRead(LDR_PIN);
@@ -68,21 +81,6 @@ void loop() {
   Serial.print(distance, 2);
   Serial.print(",LDR:");
   Serial.println(ldrValue);
-
-  if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-
-    if (command == "SUCCESS") {
-      successBeep();
-    } 
-    else if (command == "ERROR") {
-      errorBeep();
-    }
-    else if (command == "STOP") {
-      stopBuzzer();
-    }
-  }
 
   delay(100);
 }

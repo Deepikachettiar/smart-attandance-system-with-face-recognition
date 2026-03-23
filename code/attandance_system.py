@@ -12,10 +12,10 @@ BAUD_RATE = 115200
 CAMERA_INDEX = 1       # 1 = external webcam, 0 = laptop cam
 
 # Sensor conditions
-IR_TRIGGER_VALUE = 0          # change to 1 if your IR works opposite
+IR_TRIGGER_VALUE = 0          # object present on your IR = 0
 MIN_DISTANCE = 15             # cm
 MAX_DISTANCE = 80             # cm
-LDR_LIGHT_THRESHOLD = 2000    # in your setup: dark = higher, light = lower
+LDR_LIGHT_THRESHOLD = 2000    # your setup: dark = higher, bright = lower
 
 # -------- PATHS --------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,8 +29,8 @@ ATTENDANCE_FILE = os.path.join(ATTENDANCE_DIR, f'attendance_{today_str}.csv')
 # -------- SERIAL SETUP --------
 ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
 print("Connected to ESP32...")
-time.sleep(2)               # wait for ESP32 reboot
-ser.reset_input_buffer()    # clear ESP32 boot messages
+time.sleep(2)
+ser.reset_input_buffer()
 
 # -------- LOAD KNOWN FACES --------
 images = []
@@ -95,8 +95,8 @@ def markAttendance(name):
         if name not in nameList:
             now = datetime.now()
             time_now = now.strftime('%H:%M:%S')
-            date=now.strftime('%d-%m-%Y')
-            f.write(f"{name},{time_now},{date}\n")
+            date_now = now.strftime('%d-%m-%Y')
+            f.write(f"{name},{time_now},{date_now}\n")
             print(f"Attendance marked for {name}")
             return True
 
@@ -120,7 +120,7 @@ while True:
         if not data:
             continue
 
-        # ignore ESP32 boot garbage, only accept real sensor line
+        # Ignore ESP32 boot messages
         if not data.startswith("IR:"):
             continue
 
@@ -139,6 +139,7 @@ while True:
             if not success:
                 print("Could not read from camera")
                 ser.write(b"STOP\n")
+                ser.flush()
                 continue
 
             imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
@@ -150,6 +151,7 @@ while True:
             if len(encodesCurFrame) == 0:
                 print("No face detected")
                 ser.write(b"STOP\n")
+                ser.flush()  # no beep
                 cv2.imshow("Attendance System", img)
             else:
                 recognized_anyone = False
@@ -185,8 +187,16 @@ while True:
                             2
                         )
 
-                        markAttendance(name)
-                        print("Recognized:", name)
+                        marked = markAttendance(name)
+
+                        if marked:
+                            print("Recognized (NEW):", name)
+                            ser.write(b"SUCCESS\n")
+                            ser.flush()  # 1 long beep
+                        else:
+                            print("Already marked:", name)
+                            ser.write(b"STOP\n")  
+                            ser.flush()  # no beep
 
                     else:
                         cv2.rectangle(img, (left, top), (right, bottom), (0, 0, 255), 2)
@@ -201,17 +211,17 @@ while True:
                             2
                         )
 
-                if recognized_anyone:
-                    ser.write(b"SUCCESS\n")
-                else:
+                if not recognized_anyone:
                     print("Unknown person")
                     ser.write(b"ERROR\n")
+                    ser.flush()  # 3 beeps
 
                 cv2.imshow("Attendance System", img)
 
         else:
             print(f"Conditions NOT met -> IR={ir}, DIST={dist:.2f}, LDR={ldr}")
             ser.write(b"STOP\n")
+            ser.flush()  # no beep
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
