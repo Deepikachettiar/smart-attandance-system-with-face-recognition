@@ -13,7 +13,7 @@ CAMERA_INDEX = 1       # 1 = external webcam, 0 = laptop cam
 
 # Sensor conditions
 IR_TRIGGER_VALUE = 0          # change to 1 if your IR works opposite
-MIN_DISTANCE = 20             # cm
+MIN_DISTANCE = 15             # cm
 MAX_DISTANCE = 80             # cm
 LDR_LIGHT_THRESHOLD = 2000    # in your setup: dark = higher, light = lower
 
