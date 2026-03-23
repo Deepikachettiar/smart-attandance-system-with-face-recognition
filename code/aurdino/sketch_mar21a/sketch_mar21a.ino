@@ -9,6 +9,7 @@ float distanceCm;
 
 void setup() {
   Serial.begin(115200);
+  Serial.setTimeout(50);
 
   pinMode(IR_PIN, INPUT);
   pinMode(TRIG_PIN, OUTPUT);
@@ -26,7 +27,7 @@ float getDistance() {
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
 
-  duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  duration = pulseIn(ECHO_PIN, HIGH, 20000);
 
   if (duration == 0) {
     return 0.0;
@@ -43,17 +44,16 @@ void stopBuzzer() {
 void successBeep() {
   stopBuzzer();
   digitalWrite(BUZZER_PIN, HIGH);
-  delay(300);
+  delay(150);
   digitalWrite(BUZZER_PIN, LOW);
 }
 
 void errorBeep() {
-  stopBuzzer();
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 3; i++) {
     digitalWrite(BUZZER_PIN, HIGH);
-    delay(150);
+    delay(120);
     digitalWrite(BUZZER_PIN, LOW);
-    delay(150);
+    delay(120);
   }
 }
 
@@ -84,5 +84,5 @@ void loop() {
     }
   }
 
-  delay(500);
+  delay(100);
 }
