@@ -5,13 +5,14 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 import { Play, Square, RefreshCw, Save, CheckCircle, Camera, Wifi, WifiOff } from 'lucide-react';
 
-const PYTHON_URL = 'http://localhost:5001';
+// At the top of the file, after imports
+const PYTHON_URL = process.env.REACT_APP_PYTHON_URL || 'http://localhost:5001';
 
 const py = {
-  start: (body) => axios.post(`${PYTHON_URL}/api/face/start`, body),
-  stop: () => axios.post(`${PYTHON_URL}/api/face/stop`),
-  status: () => axios.get(`${PYTHON_URL}/api/face/status`),
-  health: () => axios.get(`${PYTHON_URL}/api/face/health`),
+  start:  (body)  => axios.post(`${PYTHON_URL}/api/face/start`,  body),
+  stop:   ()      => axios.post(`${PYTHON_URL}/api/face/stop`),
+  status: ()      => axios.get(`${PYTHON_URL}/api/face/status`),
+  health: ()      => axios.get(`${PYTHON_URL}/api/face/health`),
 };
 
 const STATUS_OPTS = ['Present', 'Absent', 'Late'];
