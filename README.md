@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AttendAI — Smart Attendance System with Face Recognition
 
 ## How it works
@@ -96,3 +97,6 @@ Edit `python-service/.env`:
 SERIAL_PORT=COM7    # Windows
 SERIAL_PORT=/dev/ttyUSB0   # Linux/Mac
 ```
+=======
+# smart-attandance-system-with-face-recognition
+>>>>>>> 04b51abc67847df332d7bd623b0eaa6fe62f16c5
