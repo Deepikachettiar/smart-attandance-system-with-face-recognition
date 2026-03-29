@@ -33,7 +33,7 @@ export default function Sidebar() {
         </div>
         <div>
           <div style={{ fontFamily:'Playfair Display,serif', fontWeight:700,
-            fontSize:'0.95rem', lineHeight:1.2 }}>AttendAI</div>
+            fontSize:'0.95rem', lineHeight:1.2 }}>VISIO</div>
           <div style={{ fontSize:'0.68rem', color:'var(--text-muted)' }}>Teacher Portal</div>
         </div>
       </div>
