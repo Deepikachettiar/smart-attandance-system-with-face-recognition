@@ -53,7 +53,7 @@ export default function Login() {
             <ScanFace size={20} color="#fff" />
           </div>
           <span style={{ fontFamily:'Playfair Display,serif', fontSize:'1.25rem',
-            fontWeight:700, color:'#fff' }}>AttendAI</span>
+            fontWeight:700, color:'#fff' }}>VISIO</span>
         </div>
 
         {/* Hero text */}
@@ -94,7 +94,7 @@ export default function Login() {
               <ScanFace size={17} color="#fff" />
             </div>
             <span style={{ fontFamily:'Playfair Display,serif', fontSize:'1rem', fontWeight:700 }}>
-              AttendAI
+              VISIO
             </span>
           </div>
 
