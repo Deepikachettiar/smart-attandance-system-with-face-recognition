@@ -1,4 +1,5 @@
 import axios from 'axios';
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'https://your-backend-on-render.up.railway.app';
 
 export const api = {
   // Teacher subjects (FIXED)
