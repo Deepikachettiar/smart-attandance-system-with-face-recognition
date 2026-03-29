@@ -72,9 +72,11 @@ const seed = async () => {
 
   // ── 3. Subjects ────────────────────────────────────────────────────────
   const subjectDefs = [
-    { code: 'CS301', name: 'Data Structures & Algorithms' },
-    { code: 'CS302', name: 'Database Management Systems'  },
-    { code: 'CS303', name: 'Computer Networks'            },
+    { code: 'UE24CS252B', name: 'Computer Networks' },
+    { code: 'UE24CS241B', name: 'Design and Analysis of Algorithms'  },
+    { code: 'UE24CS251B', name: 'Microprocessor and Computer Architecture'            },
+    { code: 'UE24CS242B', name: 'Operating Systems'            },
+    { code: 'UE24MA241B', name: 'Linear Algebra'            },
   ];
   const existingSubsSnap = await db.collection(collections.SUBJECTS).get();
   const existingSubs = existingSubsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
