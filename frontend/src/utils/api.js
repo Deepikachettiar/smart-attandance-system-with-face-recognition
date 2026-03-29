@@ -1,11 +1,13 @@
 import axios from 'axios';
-axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'https://your-backend-on-render.up.railway.app';
+
+// Use environment variable in production, fallback to localhost in development
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export const api = {
-  // Teacher subjects (FIXED)
+  // Teacher subjects
   getTeacherSubjects: () => axios.get('/api/attendance/teacher/subjects'),
 
-  // Class list for marking
+  // Class list for marking attendance
   getClassAttendance: (subId, date) =>
     axios.get(`/api/attendance/class/${subId}`, { params: { date } }),
 
@@ -16,15 +18,15 @@ export const api = {
   // CSV Import
   importCSV: (data) => axios.post('/api/attendance/import-csv', data),
 
-  // Export
+  // Export attendance
   exportAttendance: (subId, params) =>
     axios.get(`/api/attendance/export/${subId}`, { params }),
 
-  // Analytics (was MISSING!)
+  // Analytics
   getAnalytics: (subjectId) =>
     axios.get(`/api/attendance/analytics/${subjectId}`),
 
-  // Students
+  // Students list
   getAllStudents: () => axios.get('/api/students'),
 };
 
