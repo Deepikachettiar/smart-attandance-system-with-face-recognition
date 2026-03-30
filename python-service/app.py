@@ -9,19 +9,24 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 app = Flask(__name__)
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:3000",
-            "https://smart-attandance-system-with-face-r.vercel.app",
-            "*"   # ← Temporary allow all (for testing)
-        ],
-        "supports_credentials": True,
-        "allow_headers": ["Content-Type", "Authorization"],
-        "methods": ["GET", "POST", "OPTIONS"]
-    }
-})
 
+# Aggressive CORS for ngrok + Vercel
+CORS(app, 
+     origins=["*"],                    # Allow all origins
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization", "Accept"],
+     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+     expose_headers=["Content-Type", "Authorization"]
+)
+
+# Also add manual OPTIONS handler as backup
+@app.route('/api/face/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    response = jsonify({})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
 # ── Firebase ─────────────────────────────────────────────
 _fb_cred = credentials.Certificate({
     "type": "service_account",
