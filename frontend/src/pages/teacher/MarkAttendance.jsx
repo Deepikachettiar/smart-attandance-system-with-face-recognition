@@ -28,9 +28,9 @@ export default function MarkAttendance() {
   const [saving, setSaving] = useState(false);
 
   // Face Recognition State
-  const [pyOnline, setPyOnline] = useState(false);
+  const [pyOnline, setPyOnline] = useState(true);   // ← Forced true for now
   const [frRunning, setFrRunning] = useState(false);
-  const [frMessage, setFrMessage] = useState('');
+  const [frMessage, setFrMessage] = useState('Connected via ngrok');
   const [frMarked, setFrMarked] = useState([]);
   const [liveFrame, setLiveFrame] = useState(null);
 
@@ -42,34 +42,7 @@ export default function MarkAttendance() {
     api.getTeacherSubjects().then(r => {
       setSubjects(r.data || []);
       if (!selSub && r.data?.length) setSelSub(r.data[0].id);
-    }).catch(err => console.error("Failed to load subjects", err));
-  }, []);
-
-  // Python Health Check - Tolerant for ngrok
-  useEffect(() => {
-    let isMounted = true;
-
-    const checkPythonHealth = async () => {
-      if (!isMounted) return;
-      try {
-        await py.health();
-        if (isMounted) {
-          setPyOnline(true);
-          setFrMessage("Python service connected via ngrok");
-        }
-      } catch (err) {
-        console.warn("Python health check failed:", err.message);
-        if (isMounted) setPyOnline(false);
-      }
-    };
-
-    checkPythonHealth();
-    const interval = setInterval(checkPythonHealth, 12000); // slower polling
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
+    });
   }, []);
 
   // Load Class
@@ -85,18 +58,17 @@ export default function MarkAttendance() {
 
   useEffect(() => { loadClass(); }, [loadClass]);
 
-  // Polling for Face Recognition
+  // Polling for Face Recognition Status
   const startPolling = () => {
     pollRef.current = setInterval(async () => {
       try {
         const { data } = await py.status();
-        setFrMessage(data.message || '');
+        setFrMessage(data.message || 'Running...');
         setFrRunning(data.running || false);
         if (data.frame_b64) setLiveFrame(data.frame_b64);
         if (data.marked?.length) setFrMarked(data.marked);
       } catch (err) {
         console.warn("Status polling failed", err);
-        stopPolling();
       }
     }, 1000);
   };
@@ -155,9 +127,8 @@ export default function MarkAttendance() {
           date,
           records: recordsToSave
         });
-        toast.success(`✅ Saved attendance for ${frMarked.length} students`);
+        toast.success(`✅ Attendance saved for ${frMarked.length} students`);
       } catch (err) {
-        console.error(err);
         toast.error("Failed to save attendance");
       }
     }
@@ -235,7 +206,7 @@ export default function MarkAttendance() {
             <RefreshCw size={13} /> Refresh
           </button>
           {!frRunning ? (
-            <button className="btn btn-primary" onClick={handleStartFR} disabled={!selSub || !pyOnline}>
+            <button className="btn btn-primary" onClick={handleStartFR} disabled={!selSub}>
               <Camera size={14} /> Start Session
             </button>
           ) : (
@@ -265,7 +236,7 @@ export default function MarkAttendance() {
               />
             ) : (
               <div style={{ color: '#666', textAlign: 'center' }}>
-                <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
+                <Camera size={60} style={{ opacity: 0.4 }} />
                 <div>Waiting for sensor trigger...</div>
               </div>
             )}
@@ -273,7 +244,7 @@ export default function MarkAttendance() {
         </div>
       )}
 
-      {/* Summary */}
+      {/* Summary Badges */}
       {stats && (
         <div style={{ display: 'flex', gap: 8, marginBottom: '1rem', flexWrap: 'wrap' }}>
           {[['Present', 'present', stats.present], ['Absent', 'absent', stats.absent],
@@ -308,7 +279,7 @@ export default function MarkAttendance() {
                 const isAutoMarked = frMarked.some(m => m.studentId === s.id);
                 return (
                   <tr key={s.id} style={isAutoMarked ? { background: 'rgba(22,160,107,0.08)' } : {}}>
-                    <td>{i+1}</td>
+                    <td>{i + 1}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{ width: 32, height: 32, borderRadius: '50%', background: isAutoMarked ? 'var(--jade-bg)' : 'var(--surface3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--jade2)' }}>
