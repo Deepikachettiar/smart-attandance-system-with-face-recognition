@@ -9,7 +9,18 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000"])
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:3000",
+            "https://smart-attandance-system-with-face-r.vercel.app",
+            "*"   # ← Temporary allow all (for testing)
+        ],
+        "supports_credentials": True,
+        "allow_headers": ["Content-Type", "Authorization"],
+        "methods": ["GET", "POST", "OPTIONS"]
+    }
+})
 
 # ── Firebase ─────────────────────────────────────────────
 _fb_cred = credentials.Certificate({

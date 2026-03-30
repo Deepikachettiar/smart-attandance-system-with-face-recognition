@@ -47,12 +47,21 @@ export default function MarkAttendance() {
   }, []);
 
   // Check Python Service
-  useEffect(() => {
-    const check = () => py.health().then(() => setPyOnline(true)).catch(() => setPyOnline(false));
-    check();
-    const t = setInterval(check, 5000);
-    return () => clearInterval(t);
-  }, []);
+useEffect(() => {
+  const checkPythonHealth = async () => {
+    try {
+      const res = await py.health();
+      setPyOnline(true);
+    } catch (err) {
+      console.warn("Python health check failed:", err.message);
+      setPyOnline(false);
+    }
+  };
+
+  checkPythonHealth();
+  const interval = setInterval(checkPythonHealth, 8000); // slower polling
+  return () => clearInterval(interval);
+}, []);
 
   // Load Class
   const loadClass = useCallback(() => {
