@@ -3,9 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../../utils/api';
 import toast from 'react-hot-toast';
 import axios from 'axios';
-import { Play, Square, RefreshCw, Save, CheckCircle, Camera, Wifi, WifiOff } from 'lucide-react';
+import { RefreshCw, Save, Camera, Square, Wifi, WifiOff } from 'lucide-react';
 
-// At the top of the file, after imports
 const PYTHON_URL = process.env.REACT_APP_PYTHON_URL || 'http://localhost:5001';
 
 const py = {
@@ -41,44 +40,37 @@ export default function MarkAttendance() {
   // Load Subjects
   useEffect(() => {
     api.getTeacherSubjects().then(r => {
-      setSubjects(r.data);
-      if (!selSub && r.data.length) setSelSub(r.data[0].id);
-    });
+      setSubjects(r.data || []);
+      if (!selSub && r.data?.length) setSelSub(r.data[0].id);
+    }).catch(err => console.error("Failed to load subjects", err));
   }, []);
 
-  // Check Python Service
-// Python Health Check - More Tolerant for ngrok
-useEffect(() => {
-  let isMounted = true;
+  // Python Health Check - Tolerant for ngrok
+  useEffect(() => {
+    let isMounted = true;
 
-  const checkPythonHealth = async () => {
-    if (!isMounted) return;
-
-    try {
-      const res = await py.health();
-      if (isMounted) {
-        setPyOnline(true);
-        setFrMessage(res.data.message || "Python service connected");
+    const checkPythonHealth = async () => {
+      if (!isMounted) return;
+      try {
+        await py.health();
+        if (isMounted) {
+          setPyOnline(true);
+          setFrMessage("Python service connected via ngrok");
+        }
+      } catch (err) {
+        console.warn("Python health check failed:", err.message);
+        if (isMounted) setPyOnline(false);
       }
-    } catch (err) {
-      console.warn("Python health check failed:", err.message);
-      if (isMounted) {
-        setPyOnline(false);
-      }
-    }
-  };
+    };
 
-  // Initial check
-  checkPythonHealth();
+    checkPythonHealth();
+    const interval = setInterval(checkPythonHealth, 12000); // slower polling
 
-  // Poll less frequently to reduce errors
-  const interval = setInterval(checkPythonHealth, 10000); // every 10 seconds
-
-  return () => {
-    isMounted = false;
-    clearInterval(interval);
-  };
-}, []);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Load Class
   const loadClass = useCallback(() => {
@@ -99,15 +91,14 @@ useEffect(() => {
       try {
         const { data } = await py.status();
         setFrMessage(data.message || '');
-        setFrRunning(data.running);
+        setFrRunning(data.running || false);
         if (data.frame_b64) setLiveFrame(data.frame_b64);
-        if (data.marked?.length) {
-          setFrMarked(data.marked);
-        }
-      } catch {
+        if (data.marked?.length) setFrMarked(data.marked);
+      } catch (err) {
+        console.warn("Status polling failed", err);
         stopPolling();
       }
-    }, 800);
+    }, 1000);
   };
 
   const stopPolling = () => {
@@ -122,10 +113,9 @@ useEffect(() => {
   // Start Face Recognition
   const handleStartFR = async () => {
     if (!selSub) return toast.error('Select a subject first');
-    if (!pyOnline) return toast.error('Python service is offline');
 
     const sub = subjects.find(s => s.id === selSub);
-    if (!sub) return;
+    if (!sub) return toast.error('Subject not found');
 
     try {
       await py.start({
@@ -135,6 +125,7 @@ useEffect(() => {
         date,
         teacher_id: user?.id || 'teacher',
       });
+
       setFrRunning(true);
       setFrMarked([]);
       setLiveFrame(null);
@@ -145,12 +136,11 @@ useEffect(() => {
     }
   };
 
-  // IMPROVED: Stop + Auto Save Attendance
+  // Stop + Auto Save
   const handleStopFR = async () => {
     stopPolling();
     try { await py.stop(); } catch {}
 
-    // Auto-save recognized students as Present
     if (frMarked.length > 0 && selSub && date) {
       const recordsToSave = frMarked.map(m => ({
         student_id: m.studentId,
@@ -162,26 +152,23 @@ useEffect(() => {
       try {
         await api.bulkMark({
           subject_id: selSub,
-          date: date,
+          date,
           records: recordsToSave
         });
-        toast.success(`✅ Attendance marked Present for ${frMarked.length} student(s)`);
+        toast.success(`✅ Saved attendance for ${frMarked.length} students`);
       } catch (err) {
         console.error(err);
-        toast.error("Failed to auto-save attendance");
+        toast.error("Failed to save attendance");
       }
     }
 
     setFrRunning(false);
     setFrMessage('Session ended');
     setLiveFrame(null);
-    loadClass(); // Refresh table
+    loadClass();
   };
 
-  const setStatus = (studentId, status) => {
-    setOverrides(o => ({ ...o, [studentId]: status }));
-  };
-
+  const setStatus = (studentId, status) => setOverrides(o => ({ ...o, [studentId]: status }));
   const getEffective = s => overrides[s.id] || s.status;
 
   const handleSaveManual = async () => {
@@ -204,7 +191,6 @@ useEffect(() => {
     }
   };
 
-  // Stats
   const stats = classData ? {
     present: classData.students.filter(s => getEffective(s) === 'Present').length,
     absent: classData.students.filter(s => getEffective(s) === 'Absent').length,
@@ -214,7 +200,6 @@ useEffect(() => {
 
   return (
     <div className="page slide-up">
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ fontFamily: 'Playfair Display,serif', fontSize: '1.8rem', fontWeight: 600, margin: 0 }}>
@@ -250,7 +235,7 @@ useEffect(() => {
             <RefreshCw size={13} /> Refresh
           </button>
           {!frRunning ? (
-            <button className="btn btn-primary" onClick={handleStartFR} disabled={!selSub}>
+            <button className="btn btn-primary" onClick={handleStartFR} disabled={!selSub || !pyOnline}>
               <Camera size={14} /> Start Session
             </button>
           ) : (
@@ -271,7 +256,7 @@ useEffect(() => {
             <span style={{ fontWeight: 600 }}>Live Camera Feed</span>
             <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#1ec980' }}>{frMessage}</span>
           </div>
-          <div style={{ background: '#000', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+          <div style={{ background: '#000', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {liveFrame ? (
               <img 
                 src={`data:image/jpeg;base64,${liveFrame}`} 
@@ -279,8 +264,8 @@ useEffect(() => {
                 style={{ maxWidth: '100%', maxHeight: '420px', objectFit: 'contain' }} 
               />
             ) : (
-              <div style={{ color: '#555', textAlign: 'center' }}>
-                <Camera size={60} style={{ opacity: 0.3, marginBottom: 12 }} />
+              <div style={{ color: '#666', textAlign: 'center' }}>
+                <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
                 <div>Waiting for sensor trigger...</div>
               </div>
             )}
@@ -288,7 +273,7 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Summary Badges */}
+      {/* Summary */}
       {stats && (
         <div style={{ display: 'flex', gap: 8, marginBottom: '1rem', flexWrap: 'wrap' }}>
           {[['Present', 'present', stats.present], ['Absent', 'absent', stats.absent],
@@ -297,9 +282,6 @@ useEffect(() => {
               {val} {lbl}
             </span>
           ))}
-          <span style={{ marginLeft: 'auto', alignSelf: 'center', color: 'var(--text-muted)' }}>
-            {classData?.students?.length} students total
-          </span>
         </div>
       )}
 
@@ -326,11 +308,10 @@ useEffect(() => {
                 const isAutoMarked = frMarked.some(m => m.studentId === s.id);
                 return (
                   <tr key={s.id} style={isAutoMarked ? { background: 'rgba(22,160,107,0.08)' } : {}}>
-                    <td>{i + 1}</td>
+                    <td>{i+1}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: isAutoMarked ? 'var(--jade-bg)' : 'var(--surface3)', 
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--jade2)' }}>
+                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: isAutoMarked ? 'var(--jade-bg)' : 'var(--surface3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--jade2)' }}>
                           {s.name[0]}
                         </div>
                         <div>
@@ -340,9 +321,7 @@ useEffect(() => {
                       </div>
                     </td>
                     <td><span style={{ fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)' }}>{s.studentId}</span></td>
-                    <td>
-                      <span className={`badge badge-${effective.toLowerCase().replace(' ', '-')}`}>{effective}</span>
-                    </td>
+                    <td><span className={`badge badge-${effective.toLowerCase().replace(' ', '-')}`}>{effective}</span></td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         {STATUS_OPTS.map(st => (
