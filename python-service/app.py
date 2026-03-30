@@ -10,23 +10,23 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 app = Flask(__name__)
 
-# Aggressive CORS for ngrok + Vercel
-CORS(app, 
-     origins=["*"],                    # Allow all origins
-     supports_credentials=True,
-     allow_headers=["Content-Type", "Authorization", "Accept"],
-     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     expose_headers=["Content-Type", "Authorization"]
-)
+# === STRONG CORS CONFIGURATION FOR NGROK + VERCEL ===
+CORS(app, resources={r"/*": {
+    "origins": "*",
+    "supports_credentials": True,
+    "allow_headers": ["Content-Type", "Authorization", "Accept"],
+    "methods": ["GET", "POST", "OPTIONS"],
+    "expose_headers": ["Content-Type", "Authorization"]
+}})
 
-# Also add manual OPTIONS handler as backup
-@app.route('/api/face/<path:path>', methods=['OPTIONS'])
-def handle_options(path):
-    response = jsonify({})
+# Manual CORS headers as backup (very important for ngrok free tier)
+@app.after_request
+def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,Accept')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
+
 # ── Firebase ─────────────────────────────────────────────
 _fb_cred = credentials.Certificate({
     "type": "service_account",
@@ -71,7 +71,6 @@ def load_encodings():
 
     print("[FACES] Loading encodings from Firebase + dataset...")
 
-    # Load students from Firebase
     all_students = {}
     studs = db.collection("users").where("role", "==", "student").stream()
     for d in studs:
@@ -79,7 +78,6 @@ def load_encodings():
         sid = str(doc.get("studentId", "")).upper()
         all_students[sid] = {"id": d.id, **doc}
 
-    # Load images from dataset folder
     for student_id in os.listdir(DATASET_PATH):
         folder = os.path.join(DATASET_PATH, student_id)
         if not os.path.isdir(folder):
@@ -123,7 +121,7 @@ def mark_in_firebase(student):
         "studentId": student["id"],
         "studentName": student.get("name"),
         "studentRollNo": student.get("studentId"),
-        "subjectId": None,           # Will be updated from React
+        "subjectId": None,
         "subjectName": None,
         "subjectCode": None,
         "date": now.strftime("%Y-%m-%d"),
@@ -160,7 +158,6 @@ def worker():
                 if not ret:
                     continue
 
-                # Create display frame
                 display_img = img.copy()
                 small = cv2.resize(img, (0,0), None, 0.25, 0.25)
                 small_rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
@@ -197,7 +194,6 @@ def worker():
                             ser.write(b"SUCCESS\n")
                             recognized_this_frame = True
 
-                            # Draw green box and name
                             top, right, bottom, left = [i*4 for i in loc]
                             cv2.rectangle(display_img, (left, top), (right, bottom), (0, 255, 0), 3)
                             cv2.putText(display_img, student.get("name", "Unknown"), 
@@ -206,7 +202,6 @@ def worker():
                 if not recognized_this_frame and faces:
                     ser.write(b"ERROR\n")
 
-                # Always send latest frame to frontend
                 _, buffer = cv2.imencode('.jpg', display_img, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 state["frame_b64"] = base64.b64encode(buffer).decode('utf-8')
 

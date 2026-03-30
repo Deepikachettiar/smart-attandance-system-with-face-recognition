@@ -47,20 +47,37 @@ export default function MarkAttendance() {
   }, []);
 
   // Check Python Service
+// Python Health Check - More Tolerant for ngrok
 useEffect(() => {
+  let isMounted = true;
+
   const checkPythonHealth = async () => {
+    if (!isMounted) return;
+
     try {
       const res = await py.health();
-      setPyOnline(true);
+      if (isMounted) {
+        setPyOnline(true);
+        setFrMessage(res.data.message || "Python service connected");
+      }
     } catch (err) {
       console.warn("Python health check failed:", err.message);
-      setPyOnline(false);
+      if (isMounted) {
+        setPyOnline(false);
+      }
     }
   };
 
+  // Initial check
   checkPythonHealth();
-  const interval = setInterval(checkPythonHealth, 8000); // slower polling
-  return () => clearInterval(interval);
+
+  // Poll less frequently to reduce errors
+  const interval = setInterval(checkPythonHealth, 10000); // every 10 seconds
+
+  return () => {
+    isMounted = false;
+    clearInterval(interval);
+  };
 }, []);
 
   // Load Class
