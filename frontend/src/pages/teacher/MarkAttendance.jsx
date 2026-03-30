@@ -27,10 +27,9 @@ export default function MarkAttendance() {
   const [loadingClass, setLoadingClass] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Face Recognition State
-  const [pyOnline, setPyOnline] = useState(true);   // ← Forced true for now
+  const [pyOnline, setPyOnline] = useState(true);
   const [frRunning, setFrRunning] = useState(false);
-  const [frMessage, setFrMessage] = useState('Connected via ngrok');
+  const [frMessage, setFrMessage] = useState('Ready');
   const [frMarked, setFrMarked] = useState([]);
   const [liveFrame, setLiveFrame] = useState(null);
 
@@ -58,7 +57,7 @@ export default function MarkAttendance() {
 
   useEffect(() => { loadClass(); }, [loadClass]);
 
-  // Polling for Face Recognition Status
+  // Polling for Face Recognition
   const startPolling = () => {
     pollRef.current = setInterval(async () => {
       try {
@@ -66,11 +65,13 @@ export default function MarkAttendance() {
         setFrMessage(data.message || 'Running...');
         setFrRunning(data.running || false);
         if (data.frame_b64) setLiveFrame(data.frame_b64);
-        if (data.marked?.length) setFrMarked(data.marked);
+        if (data.marked?.length) {
+          setFrMarked(data.marked);
+        }
       } catch (err) {
-        console.warn("Status polling failed", err);
+        console.warn("Polling failed", err);
       }
-    }, 1000);
+    }, 800);
   };
 
   const stopPolling = () => {
@@ -82,7 +83,7 @@ export default function MarkAttendance() {
 
   useEffect(() => () => stopPolling(), []);
 
-  // Start Face Recognition
+  // Start Session
   const handleStartFR = async () => {
     if (!selSub) return toast.error('Select a subject first');
 
@@ -101,14 +102,15 @@ export default function MarkAttendance() {
       setFrRunning(true);
       setFrMarked([]);
       setLiveFrame(null);
+      setFrMessage("Session started - Waiting for sensor trigger...");
       startPolling();
-      toast.success('Face recognition session started');
+      toast.success('Face recognition started! Trigger the sensor now.');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to start session');
     }
   };
 
-  // Stop + Auto Save
+  // Stop Session + Auto Save
   const handleStopFR = async () => {
     stopPolling();
     try { await py.stop(); } catch {}
@@ -122,12 +124,8 @@ export default function MarkAttendance() {
       }));
 
       try {
-        await api.bulkMark({
-          subject_id: selSub,
-          date,
-          records: recordsToSave
-        });
-        toast.success(`✅ Attendance saved for ${frMarked.length} students`);
+        await api.bulkMark({ subject_id: selSub, date, records: recordsToSave });
+        toast.success(`✅ Saved ${frMarked.length} students as Present`);
       } catch (err) {
         toast.error("Failed to save attendance");
       }
@@ -202,7 +200,7 @@ export default function MarkAttendance() {
           <input type="date" className="input" style={{ width: 180 }} value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-          <button className="btn btn-secondary btn-sm" onClick={loadClass} disabled={loadingClass}>
+          <button className="btn btn-secondary btn-sm" onClick={loadClass}>
             <RefreshCw size={13} /> Refresh
           </button>
           {!frRunning ? (
@@ -225,7 +223,7 @@ export default function MarkAttendance() {
         <div className="card" style={{ marginBottom: '1.5rem', overflow: 'hidden' }}>
           <div className="card-header">
             <span style={{ fontWeight: 600 }}>Live Camera Feed</span>
-            <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#1ec980' }}>{frMessage}</span>
+            <span style={{ marginLeft: 'auto', color: '#1ec980' }}>{frMessage}</span>
           </div>
           <div style={{ background: '#000', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {liveFrame ? (
@@ -236,15 +234,16 @@ export default function MarkAttendance() {
               />
             ) : (
               <div style={{ color: '#666', textAlign: 'center' }}>
-                <Camera size={60} style={{ opacity: 0.4 }} />
+                <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
                 <div>Waiting for sensor trigger...</div>
+                <div style={{ fontSize: '0.8rem', marginTop: 8 }}>Trigger the IR sensor now</div>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Summary Badges */}
+      {/* Summary */}
       {stats && (
         <div style={{ display: 'flex', gap: 8, marginBottom: '1rem', flexWrap: 'wrap' }}>
           {[['Present', 'present', stats.present], ['Absent', 'absent', stats.absent],
@@ -257,11 +256,7 @@ export default function MarkAttendance() {
       )}
 
       {/* Student Table */}
-      {loadingClass ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[...Array(6)].map((_, i) => <div key={i} className="skeleton" style={{ height: 56 }} />)}
-        </div>
-      ) : classData ? (
+      {classData && (
         <div className="table-wrap">
           <table>
             <thead>
@@ -279,7 +274,7 @@ export default function MarkAttendance() {
                 const isAutoMarked = frMarked.some(m => m.studentId === s.id);
                 return (
                   <tr key={s.id} style={isAutoMarked ? { background: 'rgba(22,160,107,0.08)' } : {}}>
-                    <td>{i + 1}</td>
+                    <td>{i+1}</td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div style={{ width: 32, height: 32, borderRadius: '50%', background: isAutoMarked ? 'var(--jade-bg)' : 'var(--surface3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--jade2)' }}>
@@ -287,7 +282,7 @@ export default function MarkAttendance() {
                         </div>
                         <div>
                           <div style={{ fontWeight: 500 }}>{s.name}</div>
-                          {isAutoMarked && <div style={{ fontSize: '0.7rem', color: 'var(--jade2)' }}>✓ Auto-marked</div>}
+                          {isAutoMarked && <div style={{ fontSize: '0.7rem', color: 'var(--jade2)' }}>✓ Auto-marked by face recognition</div>}
                         </div>
                       </div>
                     </td>
@@ -313,7 +308,7 @@ export default function MarkAttendance() {
             </tbody>
           </table>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
