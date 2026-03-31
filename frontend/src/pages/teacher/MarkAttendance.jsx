@@ -96,30 +96,30 @@ export default function MarkAttendance() {
 
   // Start Session
   const handleStartFR = async () => {
-    if (!selSub) return toast.error("Select a subject first");
+  if (!selSub) return toast.error('Select a subject first');
 
-    const sub = subjects.find((s) => s.id === selSub);
-    if (!sub) return toast.error("Subject not found");
+  const sub = subjects.find(s => s.id === selSub);
+  if (!sub) return toast.error('Subject not found');
 
-    try {
-      await py.start({
-        subject_id: selSub,
-        subject_name: sub.name,
-        subject_code: sub.code,
-        date,
-        teacher_id: user?.id || "teacher",
-      });
+  try {
+    await py.start({
+      subject_id: selSub,
+      subject_name: sub.name,
+      subject_code: sub.code,
+      date,
+      teacher_id: user?.id || 'teacher',
+    });
 
-      setFrRunning(true);
-      setFrMarked([]);
-      setLiveFrame(null);
-      setFrMessage("Session started - Waiting for sensor trigger...");
-      startPolling();
-      toast.success("Face recognition started! Trigger the sensor now.");
-    } catch (err) {
-      toast.error(err.response?.data?.error || "Failed to start session");
-    }
-  };
+    setFrRunning(true);
+    setFrMarked([]);
+    setLiveFrame(null);
+    setFrMessage("Session started - Waiting for sensor trigger...");
+    startPolling();   // ← Make sure this is called
+    toast.success('Face recognition started! Trigger the sensor now.');
+  } catch (err) {
+    toast.error(err.response?.data?.error || 'Failed to start session');
+  }
+};
 
   // Stop Session + Auto Save
   const handleStopFR = async () => {
@@ -314,53 +314,41 @@ export default function MarkAttendance() {
         </div>
       </div>
 
-      {/* LIVE CAMERA FEED + SENSOR VALUES */}
-      {frRunning && (
-        <div
-          className="card"
-          style={{ marginBottom: "1.5rem", overflow: "hidden" }}
-        >
-          <div
-            className="card-header"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <span style={{ fontWeight: 600 }}>Live Camera Feed</span>
-            <span style={{ fontSize: "0.85rem", color: "#1ec980" }}>
-              Session Active
-            </span>
-          </div>
-
-          <div
-            style={{
-              background: "#000",
-              minHeight: 420,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-            }}
-          >
-            {liveFrame ? (
-              <img
-                src={`data:image/jpeg;base64,${liveFrame}`}
-                alt="Live Feed"
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "420px",
-                  objectFit: "contain",
-                }}
-              />
-            ) : (
-              <div style={{ color: "#666", textAlign: "center" }}>
-                <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
-                <div>Waiting for sensor trigger...</div>
-              </div>
-            )}
-          </div>
+      {/* LIVE CAMERA FEED */}
+{frRunning && (
+  <div className="card" style={{ marginBottom: '1.5rem', overflow: 'hidden' }}>
+    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ fontWeight: 600 }}>Live Camera Feed</span>
+      
+      {/* This is where you want the sensor values */}
+      <span style={{ 
+        fontSize: '0.85rem', 
+        color: '#1ec980',
+        fontFamily: 'JetBrains Mono, monospace',
+        background: 'rgba(30, 201, 128, 0.2)',
+        padding: '4px 12px',
+        borderRadius: '6px'
+      }}>
+        {frMessage}
+      </span>
+    </div>
+    
+    <div style={{ background: '#000', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+      {liveFrame ? (
+        <img 
+          src={`data:image/jpeg;base64,${liveFrame}`} 
+          alt="Live Feed" 
+          style={{ maxWidth: '100%', maxHeight: '420px', objectFit: 'contain' }} 
+        />
+      ) : (
+        <div style={{ color: '#666', textAlign: 'center' }}>
+          <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
+          <div>Waiting for sensor trigger...</div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
           {/* Real-time Sensor Values - Green Bar */}
           <div
