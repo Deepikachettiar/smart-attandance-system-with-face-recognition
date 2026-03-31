@@ -1,4 +1,11 @@
-import os, cv2, face_recognition, numpy as np, threading, base64, time, serial
+import os
+import cv2
+import face_recognition
+import numpy as np
+import threading
+import base64
+import time
+import serial   # ← This was missing
 from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -10,7 +17,6 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 app = Flask(__name__)
 
-# Strong CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.after_request
@@ -20,7 +26,7 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
-# ── Firebase Initialization ─────────────────────────────────
+# ── Firebase ─────────────────────────────────────────────
 try:
     cred = credentials.Certificate({
         "type": "service_account",
@@ -131,75 +137,82 @@ def mark_in_firebase(student):
 
 # ── Recognition Worker ───────────────────────────────────
 def worker():
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-    time.sleep(2)
-    ser.reset_input_buffer()
+    try:
+        cap = cv2.VideoCapture(CAMERA_INDEX)
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+        time.sleep(2)
+        ser.reset_input_buffer()
 
-    marked_ids = set()
+        marked_ids = set()
 
-    while not stop_event.is_set():
-        data = ser.readline().decode(errors="ignore").strip()
-        if not data.startswith("IR:"):
-            continue
+        while not stop_event.is_set():
+            data = ser.readline().decode(errors="ignore").strip()
+            if not data.startswith("IR:"):
+                continue
 
-        try:
-            parts = data.split(',')
-            ir = int(parts[0].split(':')[1])
-            dist = float(parts[1].split(':')[1])
-            ldr = int(parts[2].split(':')[1])
+            try:
+                parts = data.split(',')
+                ir = int(parts[0].split(':')[1])
+                dist = float(parts[1].split(':')[1])
+                ldr = int(parts[2].split(':')[1])
 
-            state["message"] = f"IR:{ir} | Dist:{dist:.1f}cm | LDR:{ldr}"
-        
-            if ir == IR_TRIGGER_VALUE and MIN_DISTANCE < dist < MAX_DISTANCE and ldr < LDR_LIGHT_THRESHOLD:
-                ret, img = cap.read()
-                if not ret:
-                    continue
+                # Update sensor values live
+                state["message"] = f"IR:{ir} | Dist:{dist:.1f}cm | LDR:{ldr}"
 
-                display_img = img.copy()
-                small = cv2.resize(img, (0,0), None, 0.25, 0.25)
-                small_rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-
-                faces = face_recognition.face_locations(small_rgb)
-                encs = face_recognition.face_encodings(small_rgb, faces)
-
-                for encFace, loc in zip(encs, faces):
-                    matches = face_recognition.compare_faces(known_encodings, encFace, tolerance=0.5)
-                    dista = face_recognition.face_distance(known_encodings, encFace)
-                    if len(dista) == 0:
+                if ir == IR_TRIGGER_VALUE and MIN_DISTANCE < dist < MAX_DISTANCE and ldr < LDR_LIGHT_THRESHOLD:
+                    ret, img = cap.read()
+                    if not ret:
                         continue
-                    idx = np.argmin(dista)
-                    if matches[idx]:
-                        student = known_students[idx]
-                        sid = student.get("id")
-                        if sid and sid not in marked_ids:
-                            marked_ids.add(sid)
-                            mark_in_firebase(student)
-                            state["marked"].append({
-                                "studentId": sid,
-                                "name": student.get("name"),
-                                "rollNo": student.get("studentId"),
-                                "time": datetime.now().strftime("%H:%M:%S")
-                            })
-                            ser.write(b"SUCCESS\n")
 
-                            top, right, bottom, left = [i*4 for i in loc]
-                            cv2.rectangle(display_img, (left, top), (right, bottom), (0, 255, 0), 3)
-                            cv2.putText(display_img, student.get("name", "Unknown"), 
-                                      (left, top-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                    display_img = img.copy()
+                    small = cv2.resize(img, (0,0), None, 0.25, 0.25)
+                    small_rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
 
-                _, buffer = cv2.imencode('.jpg', display_img, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                state["frame_b64"] = base64.b64encode(buffer).decode('utf-8')
+                    faces = face_recognition.face_locations(small_rgb)
+                    encs = face_recognition.face_encodings(small_rgb, faces)
 
-            else:
-                ser.write(b"STOP\n")
+                    for encFace, loc in zip(encs, faces):
+                        matches = face_recognition.compare_faces(known_encodings, encFace, tolerance=0.5)
+                        dista = face_recognition.face_distance(known_encodings, encFace)
+                        if len(dista) == 0:
+                            continue
+                        idx = np.argmin(dista)
+                        if matches[idx]:
+                            student = known_students[idx]
+                            sid = student.get("id")
+                            if sid and sid not in marked_ids:
+                                marked_ids.add(sid)
+                                mark_in_firebase(student)
+                                state["marked"].append({
+                                    "studentId": sid,
+                                    "name": student.get("name"),
+                                    "rollNo": student.get("studentId"),
+                                    "time": datetime.now().strftime("%H:%M:%S")
+                                })
+                                ser.write(b"SUCCESS\n")
 
-        except Exception as e:
-            print("[ERROR]", e)
-            state["message"] = f"Sensor error: {str(e)}"
+                                top, right, bottom, left = [i*4 for i in loc]
+                                cv2.rectangle(display_img, (left, top), (right, bottom), (0, 255, 0), 3)
+                                cv2.putText(display_img, student.get("name", "Unknown"), 
+                                          (left, top-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
-    cap.release()
-    ser.close()
+                    _, buffer = cv2.imencode('.jpg', display_img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    state["frame_b64"] = base64.b64encode(buffer).decode('utf-8')
+
+                else:
+                    ser.write(b"STOP\n")
+
+            except Exception as e:
+                print("[SENSOR ERROR]", e)
+                state["message"] = f"Sensor error: {str(e)}"
+
+        cap.release()
+        ser.close()
+
+    except Exception as e:
+        print("[WORKER CRITICAL ERROR]", e)
+        state["message"] = f"Critical error: {str(e)}"
+        state["error"] = str(e)
 
 # ── Routes ───────────────────────────────────────────────
 @app.route("/api/face/start", methods=["POST"])
