@@ -150,7 +150,7 @@ def worker():
             ldr = int(parts[2].split(':')[1])
 
             state["message"] = f"IR:{ir} | Dist:{dist:.1f}cm | LDR:{ldr}"
-
+        
             if ir == IR_TRIGGER_VALUE and MIN_DISTANCE < dist < MAX_DISTANCE and ldr < LDR_LIGHT_THRESHOLD:
                 ret, img = cap.read()
                 if not ret:
