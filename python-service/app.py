@@ -10,7 +10,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
 app = Flask(__name__)
 
-# CORS for ngrok + Vercel
+# Strong CORS
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.after_request
@@ -20,7 +20,7 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
     return response
 
-# ── Firebase (Safe way using .env) ─────────────────────
+# ── Firebase Initialization ─────────────────────────────────
 try:
     cred = credentials.Certificate({
         "type": "service_account",
@@ -34,8 +34,9 @@ try:
     print("✅ Firebase connected successfully")
 except Exception as e:
     print("❌ Firebase connection failed:", e)
+    db = None
 
-# ── Settings from .env ───────────────────────────────────
+# ── Settings ─────────────────────────────────────────────
 SERIAL_PORT = os.getenv("SERIAL_PORT", "COM7")
 BAUD_RATE = int(os.getenv("BAUD_RATE", "115200"))
 CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", "1"))
@@ -47,7 +48,7 @@ LDR_LIGHT_THRESHOLD = int(os.getenv("LDR_LIGHT_THRESHOLD", "2000"))
 
 DATASET_PATH = os.getenv("DATASET_PATH", os.path.join(os.path.dirname(__file__), "dataset"))
 
-# Global State
+# ── Global State ─────────────────────────────────────────
 state = {
     "running": False,
     "marked": [],
@@ -60,13 +61,17 @@ known_encodings = []
 known_students = []
 stop_event = threading.Event()
 
-# Load Encodings
+# ── Load Encodings ───────────────────────────────────────
 def load_encodings():
     global known_encodings, known_students
     known_encodings = []
     known_students = []
 
     print("[FACES] Loading encodings from Firebase + dataset...")
+
+    if db is None:
+        print("[FACES] Error: Firestore not initialized")
+        return 0
 
     try:
         all_students = {}
@@ -102,12 +107,14 @@ def load_encodings():
                 print(f"[FACES] Loaded: {student_id} - {student.get('name')}")
 
         print(f"[FACES] Total encodings loaded: {count}")
+        return count
     except Exception as e:
         print("[FACES] Error loading encodings:", str(e))
+        return 0
 
-# Mark in Firebase
+# ── Mark in Firebase ─────────────────────────────────────
 def mark_in_firebase(student):
-    if not student.get("id"):
+    if not student.get("id") or db is None:
         return
     now = datetime.now()
     db.collection("attendance").add({
@@ -122,12 +129,13 @@ def mark_in_firebase(student):
         "updatedAt": now,
     })
 
-# Worker Thread
+# ── Recognition Worker ───────────────────────────────────
 def worker():
     cap = cv2.VideoCapture(CAMERA_INDEX)
     ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
     time.sleep(2)
     ser.reset_input_buffer()
+
     marked_ids = set()
 
     while not stop_event.is_set():
@@ -193,7 +201,7 @@ def worker():
     cap.release()
     ser.close()
 
-# Routes
+# ── Routes ───────────────────────────────────────────────
 @app.route("/api/face/start", methods=["POST"])
 def start():
     if state["running"]:
