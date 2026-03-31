@@ -235,8 +235,10 @@ export default function MarkAttendance() {
             ) : (
               <div style={{ color: '#666', textAlign: 'center' }}>
                 <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
-                <div>Waiting for sensor trigger...</div>
-                <div style={{ fontSize: '0.8rem', marginTop: 8 }}>Trigger the IR sensor now</div>
+                <div style={{ fontSize: '0.95rem', color: '#e8e9f0' }}>{frMessage}</div>
+                <div style={{ fontSize: '0.8rem', color: '#9b9eb0', marginTop: 8 }}>
+                  Trigger the IR sensor (or check hardware connection)
+                </div>
               </div>
             )}
           </div>
