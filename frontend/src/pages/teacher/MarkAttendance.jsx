@@ -315,52 +315,63 @@ export default function MarkAttendance() {
       </div>
 
       {/* LIVE CAMERA FEED + SENSOR VALUES */}
-{frRunning && (
-  <div className="card" style={{ marginBottom: '1.5rem', overflow: 'hidden' }}>
-    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontWeight: 600 }}>Live Camera Feed</span>
-      <span style={{ fontSize: '0.85rem', color: '#1ec980' }}>Session Active</span>
-    </div>
-    
-    <div style={{ background: '#000', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-      {liveFrame ? (
-        <img 
-          src={`data:image/jpeg;base64,${liveFrame}`} 
-          alt="Live Feed" 
-          style={{ maxWidth: '100%', maxHeight: '420px', objectFit: 'contain' }} 
-        />
-      ) : (
-        <div style={{ color: '#666', textAlign: 'center' }}>
-          <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
-          <div>Waiting for sensor trigger...</div>
-        </div>
-      )}
-    </div>
+      {frRunning && (
+        <div
+          className="card"
+          style={{ marginBottom: "1.5rem", overflow: "hidden" }}
+        >
+          <div
+            className="card-header"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>Live Camera Feed</span>
+            <span style={{ fontSize: "0.85rem", color: "#1ec980" }}>
+              Session Active
+            </span>
+          </div>
 
-    {/* Real-time Sensor Values - Prominent Green Bar */}
-    <div style={{ 
-      padding: '14px 20px', 
-      background: 'rgba(30, 201, 128, 0.15)', 
-      borderTop: '2px solid #1ec980',
-      fontSize: '0.9rem',
-      color: '#1ec980',
-      fontFamily: 'JetBrains Mono, monospace',
-      fontWeight: 500
-    }}>
-      Real-time Sensor: <strong>{frMessage}</strong>
-    </div>
-  </div>
-)}
-
-          {/* Sensor Values Display - NEW */}
           <div
             style={{
-              padding: "12px 16px",
-              background: "rgba(30, 201, 128, 0.1)",
-              borderTop: "1px solid rgba(30, 201, 128, 0.2)",
-              fontSize: "0.85rem",
+              background: "#000",
+              minHeight: 420,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+            }}
+          >
+            {liveFrame ? (
+              <img
+                src={`data:image/jpeg;base64,${liveFrame}`}
+                alt="Live Feed"
+                style={{
+                  maxWidth: "100%",
+                  maxHeight: "420px",
+                  objectFit: "contain",
+                }}
+              />
+            ) : (
+              <div style={{ color: "#666", textAlign: "center" }}>
+                <Camera size={60} style={{ opacity: 0.4, marginBottom: 12 }} />
+                <div>Waiting for sensor trigger...</div>
+              </div>
+            )}
+          </div>
+
+          {/* Real-time Sensor Values - Green Bar */}
+          <div
+            style={{
+              padding: "14px 20px",
+              background: "rgba(30, 201, 128, 0.15)",
+              borderTop: "2px solid #1ec980",
+              fontSize: "0.92rem",
               color: "#1ec980",
               fontFamily: "JetBrains Mono, monospace",
+              fontWeight: 500,
             }}
           >
             Real-time Sensor: <strong>{frMessage}</strong>
